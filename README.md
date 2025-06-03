@@ -31,3 +31,12 @@ int main() {
     free_hashmap(&map);
     return 0;
 }
+```
+## Details
+
+- Hashing: Uses a multiplier-based hash function (MULTIPLIER = 37)
+- Collisions: Resolved via linear probing
+- Memory: Dynamically allocated and freed with proper cleanup
+
+## License
+MIT License. Feel free to use, modify, and distribute.
