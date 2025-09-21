@@ -37,7 +37,7 @@ static inline uint32_t hash(const char* str) {
     return h;
 }
 
-static inline free_hashmap(HashMap* map) {
+static inline void free_hashmap(HashMap* map) {
     for (uint32_t i = 0; i < map->capacity; i++) {
         HashMapEntry* entry = &map->entries[i];
         if (entry->key != NULL) {
