@@ -1,114 +1,119 @@
 #include "map.h"
 
-void init_hashmap(HashMap* map, const uint32_t element_size) {
+int init_hashmap(HashMap* map, const uint32_t element_size) {
     map->size = 0;
     map->element_size = element_size;
-    map->capacity = 100;
-
+    map->capacity = 128;
     map->entries = (HashMapEntry*)calloc(map->capacity, sizeof(HashMapEntry));
-    if (map->entries == NULL) {
-        printf("Failed to allocate memory for HashMap.\n");
-        exit(EXIT_FAILURE);
-    }
+    return map->entries ? HASHMAP_SUCCESS : HASHMAP_FAIL;
 }
 
-void push_hashmap(HashMap* map, const char* key, const void* data) {
+int push_hashmap(HashMap* map, const char* key, const void* data) {
 
-    if(map->size == map->capacity / 2) {
+    if ((map->size + 1) * 100 / map->capacity > 70) {
         grow_hashmap(map);
     }
 
-    uint32_t index = hash(key) % map->capacity;
+    uint32_t mask = map->capacity - 1;
+    uint32_t idx = hash(key) & mask;
 
-    for (uint32_t i = 0; i < map->capacity; i++) {
-        uint32_t try = (index + i) % map->capacity;
-        HashMapEntry* entry = &map->entries[try];
+    for (int i = 0; i < map->capacity; i++) {
+        
+        HashMapEntry* e = &map->entries[idx];
 
-        if (entry->key == NULL) {
-            entry->key = strdup(key);
-            entry->value = malloc(map->element_size);
-            memcpy(entry->value, data, map->element_size);
+        if (e->key == NULL || e->key == TOMBSTONE) {
+            e->key = strdup(key);
+            e->value = malloc(map->element_size);
+            memcpy(e->value, data, map->element_size);
             map->size++;
-            return;
+            return HASHMAP_SUCCESS;
         }
-
-        if (strcmp(entry->key, key) == 0) {
-            memcpy(entry->value, data, map->element_size);
-            return;
+        if (strcmp(e->key, key) == 0) {
+            memcpy(e->value, data, map->element_size);
+            return HASHMAP_SUCCESS;
         }
+        
+        idx = (idx + 1) & mask;
     }
+
+    return HASHMAP_FAIL;
 }
 
 void* get_hashmap(HashMap* map, const char* key) {
-    uint32_t index = hash(key) % map->capacity;
 
-    for (uint32_t i = 0; i < map->capacity; i++) {
-        uint32_t try = (index + i) % map->capacity;
-        HashMapEntry* entry = &map->entries[try];
+    uint32_t mask = map->capacity - 1;
+    uint32_t idx = hash(key) & mask;
 
-        if (entry->key == NULL) {
+    for (int i = 0; i < map->capacity; i++) {
+        
+        HashMapEntry* e = &map->entries[idx];
+
+        if (e->key == NULL) {
             return NULL;
         }
 
-        if (strcmp(entry->key, key) == 0) {
-            return entry->value;
+        if (e->key != TOMBSTONE && strcmp(e->key, key) == 0) {
+            return e->value;
         }
+
+        idx = (idx + 1) & mask;
     }
 
     return NULL; 
 }
 
-void remove_hashmap(HashMap* map, const char* key) {
-    uint32_t index = hash(key) % map->capacity;
+int remove_hashmap(HashMap* map, const char* key) {
 
-    for (uint32_t i = 0; i < map->capacity; i++) {
-        uint32_t try = (index + i) % map->capacity;
-        HashMapEntry* entry = &map->entries[try];
+    uint32_t mask = map->capacity - 1;
+    uint32_t idx = hash(key) & mask;
 
-        if (entry->key == NULL) {
-            return;
+    for (int i = 0; i < map->capacity; i++) {
+        
+        HashMapEntry* e = &map->entries[idx];
+
+        if (e->key == NULL) {
+            return HASHMAP_FAIL;
         }
 
-        if (strcmp(entry->key, key) == 0) {
-            entry->key = NULL;
-            memset(entry->value, 0, map->element_size);
+        if (strcmp(e->key, key) == 0) {
+            free(e->key);
+            free(e->value);
+            e->key = TOMBSTONE;
+            e->value = NULL;
+            map->size--;
+            return HASHMAP_SUCCESS;
         }
 
+        idx = (idx + 1) & mask;
     }
+
+    return HASHMAP_FAIL;
 }
 
+
 // grow and re-hash old entries
-void grow_hashmap(HashMap* map) {
-    uint32_t old_capicity = map->capacity;
+void grow_hashmap(HashMap *map) {
+    uint32_t old_capacity = map->capacity;
+    HashMapEntry *old_entries = map->entries;
+
     map->capacity *= 2;
-    HashMapEntry* temp = (HashMapEntry*)calloc(map->capacity, sizeof(HashMapEntry));
+    map->entries = calloc(map->capacity, sizeof(HashMapEntry));
+    map->size = 0;
 
-    for (uint32_t i = 0; i < old_capicity; i++) {
-        HashMapEntry* entry = &map->entries[i];
-        if (entry->key == NULL) {
-            continue;
-        }
+    for (uint32_t i = 0; i < old_capacity; i++) {
+        HashMapEntry *entry = &old_entries[i];
+        if (entry->key != NULL && entry->key != TOMBSTONE) {
 
-        uint32_t index = hash(entry->key) % map->capacity;
-
-        for (uint32_t j = 0; j < map->capacity; j++) {
-            uint32_t try = (index + j) % map->capacity;
-            HashMapEntry* temp_entry = &temp[try];
-
-            if (temp_entry->key == NULL) {
-                temp_entry->key = strdup(entry->key);
-                temp_entry->value = malloc(map->element_size);
-                memcpy(temp_entry->value, entry->value, map->element_size);
-                break;
+            uint32_t mask = map->capacity - 1;
+            uint32_t idx = hash(entry->key) & mask;
+            while (map->entries[idx].key != NULL) {
+                idx = (idx + 1) & mask;
             }
-
-            if (strcmp(temp_entry->key, entry->key) == 0) {
-                memcpy(temp_entry->value, entry->value, map->element_size);
-                break;
-            }
+            map->entries[idx].key   = entry->key;
+            map->entries[idx].value = entry->value;
+            map->size++;
         }
     }
 
-    free(map->entries);
-    map->entries = temp;
+    free(old_entries);
 }

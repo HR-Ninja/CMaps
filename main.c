@@ -2,7 +2,9 @@
 
 int main() {
     HashMap map;
-    init_hashmap(&map, sizeof(int));
+    if (init_hashmap(&map, sizeof(int)) == HASHMAP_FAIL) {
+        printf("Failed to init hashmap.\n");
+    }
 
     int i = 10;
     push_hashmap(&map, "test 1", &i);
